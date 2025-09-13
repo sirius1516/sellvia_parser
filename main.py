@@ -1,8 +1,10 @@
-import requests
+import os
 import time
-from bs4 import BeautifulSoup
+import random
+import requests
+import xlsxwriter
 import pandas as pd
-import openpyxl
+from bs4 import BeautifulSoup
 
 headers = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
@@ -57,6 +59,146 @@ def get_item_links():
         print(f'Saved {len(item_link_list)} to item_links.xlsx')
     else:
         print('Items not found')
+    return f'Found {len(item_link_list)}'
 
 
-get_item_links()
+# get_item_links()
+
+def get_pages():
+    df = pd.read_excel('item_links.xlsx')
+    links = df.iloc[:, 0].dropna().tolist()
+    print(f'Handling {links}')
+
+    for i, link in enumerate(links, 1):
+        response = requests.get(link, headers=headers)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, 'lxml')
+
+        with open(f'page_{i}.html', 'w', encoding='utf-8') as file:
+            file.write(soup.prettify())
+    time.sleep(5)
+
+
+get_pages()
+
+
+def get_item_info():
+    df = pd.read_excel('item_links.xlsx')
+    links = df.iloc[:, 0].dropna().tolist()
+    print(f'Handling {links}')
+
+    titles = []
+    sale_prices = []
+    retail_prices = []
+    save_amounts = []
+    descriptions = []
+    img_urls = []
+
+    for i, link in enumerate(links, 1):
+        try:
+            print(f'Handling link {i}/{len(links)}: {link}')
+            response = requests.get(link, headers=headers)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.content, 'lxml')
+
+            with open(f'page_{i}.html', 'w', encoding='utf-8') as file:
+                file.write(soup.prettify())
+
+            title_element = soup.find('form', id='form_singleProduct')
+            if title_element:
+                title = title_element.find('h1', class_='h4').text.strip()
+            else:
+                title = 'Not found'
+
+            sale_price = soup.find('input', {'name': '_salePrice'}).get('value')
+            if sale_price:
+                sale_price = '$' + sale_price
+            else:
+                'Not found'
+
+            retail_price = soup.find('input', {'name': '_price'}).get('value')
+            if retail_price:
+                retail_price = '$' + retail_price
+            else:
+                'Not found'
+
+            save_amount = soup.find('input', {'name': '_save'}).get('value')
+            if save_amount:
+                save_amount = '$' + save_amount
+            else:
+                'Not found'
+
+            description_div = soup.find('div', itemprop='description')
+            if description_div:
+                description = description_div.get_text(separator='\n', strip=True)
+            else:
+                description = 'Not found'
+
+            img_url = soup.find('div', class_='itembgr')
+            if img_url:
+                img_url = img_url.get('data-img', '')
+            else:
+                img_url = 'Not found'
+
+            titles.append(title)
+            sale_prices.append(sale_price)
+            retail_prices.append(retail_price)
+            save_amounts.append(save_amount)
+            descriptions.append(description)
+            img_urls.append(img_url)
+
+            sleep_time = random.uniform(1, 4)
+            print(f'Pause {sleep_time:.1f} seconds...')
+            time.sleep(sleep_time)
+
+        except Exception as e:
+            print(f'Error while handling {link}: {e}')
+            titles.append('Error')
+            sale_prices.append('Error')
+            retail_prices.append('Error')
+            save_amounts.append('Error')
+            descriptions.append('Error')
+            img_urls.append('Error')
+
+            time.sleep(3)
+
+    result_df = pd.DataFrame({
+        'Title': titles,
+        'Sale price': sale_prices,
+        'Retail price': retail_prices,
+        'Save amount': save_amounts,
+        'Description': descriptions,
+        'IMG URL': img_urls,
+    })
+    print(result_df)
+
+    book = xlsxwriter.Workbook(r'D:\web_scraping\projects\sellviacatalog\items.xlsx')
+    page = book.add_worksheet('Items')
+
+    page.set_column('A:A', 150)
+    page.set_column('B:B', 30)
+    page.set_column('C:C', 30)
+    page.set_column('D:D', 30)
+    page.set_column('E:E', 200)
+    page.set_column('F:F', 100)
+
+    page.write(0, 0, 'Title')
+    page.write(0, 1, 'Sale Price')
+    page.write(0, 2, 'Retail Price')
+    page.write(0, 3, 'Save Amount')
+    page.write(0, 4, 'Description')
+    page.write(0, 5, 'IMG URL')
+
+    for row, (title, sale_price, retail_price, save_amount, description, img_url) in enumerate(zip(titles, prices, descriptions, img_urls), 1):
+        page.write(row, 0, title)
+        page.write(row, 1, sale_price)
+        page.write(row, 2, retail_price)
+        page.write(row, 3, save_amount)
+        page.write(row, 4, description)
+        page.write(row, 5, img_url)
+
+    book.close()
+    print('File saved successfully!')
+
+
+# get_item_info()
